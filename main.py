@@ -29,13 +29,13 @@ TWITTER_TARGET_USER = "priconne_redive"
 
 REPLIES_LIST = [
     "Cobra!",
-    ":kyaruStare:",
-    ":kyaruHuh: SAVE THOSE :priconneJewel:",
+    "<:kyaruStare:1293244803198226575>",
+    "<:kyaruHuh:1293244809850650625> SAVE THOSE <:priconneJewel:1293244797657808896>",
     "Noooooo!",
-    "Someone stop him! :kyaruHuh:",
-    "If you pull, I pull too :kyoukaGun:",
-    "Try me :kyoukaGun:",
-    "What did you just say? :kyaruStare:",
+    "Someone stop him! <:kyaruHuh:1293244809850650625>",
+    "If you pull, I pull too <:kyoukaGun:1293244780419219601>",
+    "Try me <:kyoukaGun:1293244780419219601>",
+    "What did you just say? <:kyaruStare:1293244803198226575>",
     "https://tenor.com/oBPGwpSZCF6.gif",
     "https://tenor.com/bXz4I.gif"
 ]
@@ -121,7 +121,7 @@ async def on_message(message):
 def find_pull(text):
     pattern = r'(.)\1+'
     repl = r'\1'
-    text = text.lower().split()
+    text = re.sub(r"[^A-Za-z ]", "", text.lower()).split()
     for word in text:
         if re.sub(pattern, repl, word) == "pul":
             return True
