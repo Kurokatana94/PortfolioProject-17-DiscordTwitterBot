@@ -123,12 +123,9 @@ async def on_message(message):
         await message.channel.send(random.choice(REPLIES_LIST))
 
 async def unembed_links(text):
-    has_url = re.search(r'https?://\S+', text)
-    if has_url:
-        url = has_url.group(0)
-        new_url = f"<{url}>"
-        return text.replace(url, new_url)
-    return text
+    if not re.search(r'https?://\S+', text):
+        return text
+    return re.sub(r'https?://\S+', lambda match: f"<{match.group}>", text)
 
 def find_pull(text):
     pattern = r'(.)\1+'
