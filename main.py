@@ -1,3 +1,5 @@
+from operator import index
+
 from dotenv import load_dotenv
 from googletrans import Translator
 import discord
@@ -55,6 +57,7 @@ last_tweet_id = None
 twitter_target_user_id = None
 
 # This function checks for new tweets from the target Twitter user and sends them to the Discord channel.
+
 async def check_tweets():
     global last_tweet_id, twitter_target_user_id
 
@@ -81,6 +84,7 @@ async def check_tweets():
                 last_discord_msg = last_discord_msg.content if last_discord_msg else ""
                 if last_discord_msg.splitlines()[-1] != tweet_url:
                     tweet_translated_text = await translate_text(tweet.text)
+                    tweet_translated_text = await unembed_links(tweet_translated_text)
                     await channel.send(f"{tweet_translated_text}\n{tweet_url}")
                 else:
                     print("Tried to fetch new tweet, but none were found")
@@ -117,6 +121,14 @@ async def on_message(message):
 
     if message.author.id == COBRA_ID and find_pull(message.content):
         await message.channel.send(random.choice(REPLIES_LIST))
+
+async def unembed_links(text):
+    has_url = re.search(r'https?://\S+', text)
+    if has_url:
+        url = has_url.group(0)
+        new_url = f"<{url}>"
+        return text.replace(url, new_url)
+    return text
 
 def find_pull(text):
     pattern = r'(.)\1+'
