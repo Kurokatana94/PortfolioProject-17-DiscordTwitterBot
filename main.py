@@ -125,7 +125,7 @@ async def on_message(message):
 async def unembed_links(text):
     if not re.search(r'https?://\S+', text):
         return text
-    return re.sub(r'https?://\S+', lambda match: f"<{match.group}>", text)
+    return re.sub(r'https?://\S+', lambda match: f"<{match.group()}>", text)
 
 def find_pull(text):
     pattern = r'(.)\1+'
