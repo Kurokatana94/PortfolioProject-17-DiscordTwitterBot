@@ -1,5 +1,3 @@
-from operator import index
-
 from dotenv import load_dotenv
 from googletrans import Translator
 import discord
@@ -18,7 +16,8 @@ DISCLOUD_KEY=os.getenv("DISCLOUD_KEY")
 COBRA_ID=int(os.getenv("COBRA_ID"))
 # KURO_ID=int(os.getenv("KURO_ID"))
 
-DISCORD_TWITTER_CHANNEL_ID=int(os.getenv("DISCORD_TWITTER_CHANNEL_ID"))
+DISCORD_PRICONNE_TWITTER_CHANNEL_ID=int(os.getenv("DISCORD_PRICONNE_TWITTER_CHANNEL_ID"))
+DISCORD_UMAMUSUME_TWITTER_CHANNEL_ID=int(os.getenv("DISCORD_UMAMUSUME_TWITTER_CHANNEL_ID"))
 DISCORD_TEST_CHANNEL_ID=int(os.getenv("DISCORD_TEST_CHANNEL_ID"))
 
 TWITTER_BEARER=os.getenv("TWITTER_BEARER")
@@ -27,7 +26,7 @@ TWITTER_API_SECRET=os.getenv("TWITTER_API_SECRET")
 TWITTER_ACCESS_TOKEN=os.getenv("TWITTER_ACCESS_TOKEN")
 TWITTER_ACCESS_TOKEN_SECRET=os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
 
-TWITTER_TARGET_USER = "priconne_redive"
+TWITTER_TARGET_USERS_CHANNELS = {"priconne_redive":DISCORD_PRICONNE_TWITTER_CHANNEL_ID, "umamusume_eng":DISCORD_UMAMUSUME_TWITTER_CHANNEL_ID}
 
 REPLIES_LIST = [
     "Cobra!",
@@ -49,49 +48,67 @@ client = discord.Client(intents=intents)
 
 twitter_client = tweepy.Client(bearer_token=TWITTER_BEARER)
 
-def get_twitter_user_id(username):
+twitter_user_ids = {}
+def get_twitter_user_id_cached(username):
+    if username in twitter_user_ids:
+        return twitter_user_ids[username]
     user = twitter_client.get_user(username=username)
-    return user.data.id if user.data else None
+    if user.data:
+        twitter_user_ids[username] = user.data.id
+        return user.data.id
+    return None
 
-last_tweet_id = None
-twitter_target_user_id = None
+last_tweet_ids = {}
+twitter_target_users = [user for user, _ in TWITTER_TARGET_USERS_CHANNELS.items()]
+twitter_user_index = 0
 
 # This function checks for new tweets from the target Twitter user and sends them to the Discord channel.
 
 async def check_tweets():
-    global last_tweet_id, twitter_target_user_id
+    global last_tweet_ids, twitter_user_index, twitter_target_users
 
     await client.wait_until_ready()
 
-    if twitter_target_user_id is None:
-        twitter_target_user_id = get_twitter_user_id(TWITTER_TARGET_USER)
-
-    channel = client.get_channel(DISCORD_TWITTER_CHANNEL_ID)
-
     while not client.is_closed():
         try:
-            if last_tweet_id is None:
-                tweets = twitter_client.get_users_tweets(twitter_target_user_id, max_results=5)
+            user = twitter_target_users[twitter_user_index]
+            channel = client.get_channel(TWITTER_TARGET_USERS_CHANNELS[user]) # client.get_channel(DISCORD_TEST_CHANNEL_ID) # <-- for testing
+            print("Selected user:", user)
+            print("Channel:", channel)
+
+            if user not in last_tweet_ids:
+                user_id = get_twitter_user_id_cached(user)
+                last_tweet_ids[user] = None
             else:
-                tweets = twitter_client.get_users_tweets(twitter_target_user_id, max_results=5, since_id=last_tweet_id)
-                print("Fetching new tweets since last tweet ID:", last_tweet_id)
-            #  TODO CHECK MULTIPLE TWEETS AT ONCE (TO NOT MISS MULTIPLE TWEETS SENT IN THE 15m TIMEFRAME GIVEN BY THE API)
+                user_id = get_twitter_user_id_cached(user)
+            # print("Last tweet ID:", last_tweet_ids)
+            # print("Selected user ID:", user_id)
+            last_id = last_tweet_ids[user]
+            if last_id is None:
+                tweets = twitter_client.get_users_tweets(user_id, max_results=5)
+                # print("Fetching tweets 'ID None':", tweets)
+            else:
+                tweets = twitter_client.get_users_tweets(user_id, max_results=5, since_id=last_id)
+                print("Fetching new tweets since last tweet ID:", last_id)
+
+            # Checks for the latest discord messages and sends translated if no doubles
             if tweets.data:
                 tweet = tweets.data[0]
-                last_tweet_id = tweet.id
-                tweet_url = f"https://twitter.com/{TWITTER_TARGET_USER}/status/{tweet.id}"
-                last_discord_msg = await anext(channel.history(limit=1))
-                last_discord_msg = last_discord_msg.content if last_discord_msg else ""
+                last_tweet_ids[user] = tweet.id
+                tweet_url = f"https://twitter.com/{user}/status/{tweet.id}"
+                last_discord_msg = await anext(channel.history(limit=1), None)
+                last_discord_msg = last_discord_msg.content if last_discord_msg else " "
                 if last_discord_msg.splitlines()[-1] != tweet_url:
                     tweet_translated_text = await translate_text(tweet.text)
                     tweet_translated_text = await unembed_links(tweet_translated_text)
                     await channel.send(f"{tweet_translated_text}\n{tweet_url}")
                 else:
                     print("Tried to fetch new tweet, but none were found")
-
         except Exception as e:
             print("Error fetching tweets:", e)
-        
+
+        twitter_user_index = (twitter_user_index + 1) % len(twitter_target_users)
+
         await asyncio.sleep(915) # Wait for 15 minutes before checking again (with an added 15s of buffering)
 
 # async def quick_test():
