@@ -109,7 +109,7 @@ async def check_tweets():
 
         twitter_user_index = (twitter_user_index + 1) % len(twitter_target_users)
 
-        await asyncio.sleep(915) # Wait for 15 minutes before checking again (with an added 15s of buffering)
+        await asyncio.sleep(17280) # Wait for 15 minutes before checking again (with an added 15s of buffering) <-- I need to increase it to few hours to maybe once a day... stupid twitter limit
 
 # async def quick_test():
 #     channel = client.get_channel(DISCORD_TEST_CHANNEL_ID)
