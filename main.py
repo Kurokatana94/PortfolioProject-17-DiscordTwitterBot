@@ -41,6 +41,12 @@ REPLIES_LIST = [
     "https://tenor.com/bXz4I.gif"
 ]
 
+TRIGGER_WORDS = [
+    "pul",
+    "puls",
+    "pulz",
+]
+
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -149,7 +155,7 @@ def find_pull(text):
     repl = r'\1'
     text = re.sub(r"[^A-Za-z ]", "", text.lower()).split()
     for word in text:
-        if re.sub(pattern, repl, word) == "pul":
+        if re.sub(pattern, repl, word) in TRIGGER_WORDS:
             return True
     return False
 
