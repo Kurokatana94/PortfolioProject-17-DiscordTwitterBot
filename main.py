@@ -68,6 +68,8 @@ last_tweet_ids = {}
 twitter_target_users = [user for user, _ in TWITTER_TARGET_USERS_CHANNELS.items()]
 twitter_user_index = 0
 
+sleep_time : int = 85175
+
 # This function checks for new tweets from the target Twitter user and sends them to the Discord channel.
 
 async def check_tweets():
@@ -91,31 +93,36 @@ async def check_tweets():
             # print("Selected user ID:", user_id)
             last_id = last_tweet_ids[user]
             if last_id is None:
-                tweets = twitter_client.get_users_tweets(user_id, max_results=5)
+                tweets = twitter_client.get_users_tweets(user_id, max_results=10)
                 # print("Fetching tweets 'ID None':", tweets)
             else:
-                tweets = twitter_client.get_users_tweets(user_id, max_results=5, since_id=last_id)
+                tweets = twitter_client.get_users_tweets(user_id, max_results=10, since_id=last_id)
                 print("Fetching new tweets since last tweet ID:", last_id)
 
             # Checks for the latest discord messages and sends translated if no doubles
             if tweets.data:
-                tweet = tweets.data[0]
-                last_tweet_ids[user] = tweet.id
-                tweet_url = f"https://twitter.com/{user}/status/{tweet.id}"
+                tweets_data = list(tweets.data)
+                last_tweet_ids[user] = tweets_data[0].id
+                
                 last_discord_msg = await anext(channel.history(limit=1), None)
                 last_discord_msg = last_discord_msg.content if last_discord_msg else " "
-                if last_discord_msg.splitlines()[-1] != tweet_url:
-                    tweet_translated_text = await translate_text(tweet.text)
-                    tweet_translated_text = await unembed_links(tweet_translated_text)
-                    await channel.send(f"{tweet_translated_text}\n{tweet_url}")
-                else:
-                    print("Tried to fetch new tweet, but none were found")
+                
+                for tweet in tweets_data[::-1]:
+                    tweet_url = f"https://twitter.com/{user}/status/{tweet.id}"
+
+                    if last_discord_msg.splitlines()[-1] != tweet_url:
+                        tweet_translated_text = await translate_text(tweet.text)
+                        tweet_translated_text = await unembed_links(tweet_translated_text)
+                        await channel.send(f"{tweet_translated_text}\n{tweet_url}")
+                    else:
+                        print("Tried to fetch new tweet, but none were found")
+
         except Exception as e:
             print("Error fetching tweets:", e)
 
         twitter_user_index = (twitter_user_index + 1) % len(twitter_target_users)
 
-        await asyncio.sleep(17280) # Wait for 15 minutes before checking again (with an added 15s of buffering) <-- I need to increase it to few hours to maybe once a day... stupid twitter limit
+        await asyncio.sleep(1215) # Wait for 4h 48m before checking again (with an added 15s of buffering) <-- I need to increase it to few hours to maybe once a day... stupid twitter limit | 86400 (24h) get_sleep_time()
 
 # async def quick_test():
 #     channel = client.get_channel(DISCORD_TEST_CHANNEL_ID)
@@ -158,5 +165,10 @@ def find_pull(text):
         if re.sub(pattern, repl, word) in TRIGGER_WORDS:
             return True
     return False
+
+def get_sleep_time() -> int:
+    global sleep_time
+    sleep_time = 1215 if sleep_time == 85175 else 85175
+    return sleep_time
 
 client.run(BOT_TOKEN)

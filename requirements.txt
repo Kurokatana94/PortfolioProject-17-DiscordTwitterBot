@@ -1,4 +1,4 @@
 tweepy~=4.16.0
 discord.py~=2.5.2
-dotenv~=0.9.9
+python-dotenv~=1.0.1
 googletrans~=4.0.2
