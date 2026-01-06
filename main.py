@@ -1,9 +1,10 @@
 from dotenv import load_dotenv
 from googletrans import Translator
+import feedparser
 import discord
-import tweepy
 import random
 import asyncio
+import html
 import os
 import re
 
@@ -20,13 +21,20 @@ DISCORD_PRICONNE_TWITTER_CHANNEL_ID=int(os.getenv("DISCORD_PRICONNE_TWITTER_CHAN
 DISCORD_UMAMUSUME_TWITTER_CHANNEL_ID=int(os.getenv("DISCORD_UMAMUSUME_TWITTER_CHANNEL_ID"))
 DISCORD_TEST_CHANNEL_ID=int(os.getenv("DISCORD_TEST_CHANNEL_ID"))
 
-TWITTER_BEARER=os.getenv("TWITTER_BEARER")
-TWITTER_API_KEY=os.getenv("TWITTER_API_KEY")
-TWITTER_API_SECRET=os.getenv("TWITTER_API_SECRET")
-TWITTER_ACCESS_TOKEN=os.getenv("TWITTER_ACCESS_TOKEN")
-TWITTER_ACCESS_TOKEN_SECRET=os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
+# TWITTER_BEARER=os.getenv("TWITTER_BEARER")
+# TWITTER_API_KEY=os.getenv("TWITTER_API_KEY")
+# TWITTER_API_SECRET=os.getenv("TWITTER_API_SECRET")
+# TWITTER_ACCESS_TOKEN=os.getenv("TWITTER_ACCESS_TOKEN")
+# TWITTER_ACCESS_TOKEN_SECRET=os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
 
-TWITTER_TARGET_USERS_CHANNELS = {"priconne_redive":DISCORD_PRICONNE_TWITTER_CHANNEL_ID, "umamusume_eng":DISCORD_UMAMUSUME_TWITTER_CHANNEL_ID}
+PRICONNE_RSS = os.getenv("PRICONNE_RSS")
+UMAMUSUME_RSS = os.getenv("UMAMUSUME_RSS")
+
+TWITTER_TARGET_USERS_CHANNELS = {
+    "priconne_redive": (DISCORD_PRICONNE_TWITTER_CHANNEL_ID, PRICONNE_RSS),
+    "umamusume_eng": (DISCORD_UMAMUSUME_TWITTER_CHANNEL_ID, UMAMUSUME_RSS),
+    # "test_channel": (DISCORD_TEST_CHANNEL_ID, PRICONNE_RSS)
+}
 
 REPLIES_LIST = [
     "Cobra!",
@@ -52,83 +60,52 @@ intents.message_content = True
 
 client = discord.Client(intents=intents)
 
-twitter_client = tweepy.Client(bearer_token=TWITTER_BEARER)
-
-twitter_user_ids = {}
-def get_twitter_user_id_cached(username):
-    if username in twitter_user_ids:
-        return twitter_user_ids[username]
-    user = twitter_client.get_user(username=username)
-    if user.data:
-        twitter_user_ids[username] = user.data.id
-        return user.data.id
-    return None
-
 last_tweet_ids = {}
-twitter_target_users = [user for user, _ in TWITTER_TARGET_USERS_CHANNELS.items()]
-twitter_user_index = 0
 
-sleep_time : int = 85175
-
-# This function checks for new tweets from the target Twitter user and sends them to the Discord channel.
-
+# This function checks for new tweets via RSS and sends them to the Discord channel.
 async def check_tweets():
-    global last_tweet_ids, twitter_user_index, twitter_target_users
-
     await client.wait_until_ready()
 
     while not client.is_closed():
         try:
-            user = twitter_target_users[twitter_user_index]
-            channel = client.get_channel(TWITTER_TARGET_USERS_CHANNELS[user]) # client.get_channel(DISCORD_TEST_CHANNEL_ID) # <-- for testing
-            print("Selected user:", user)
-            print("Channel:", channel)
+            for user_name, (channel_id, rss_url) in TWITTER_TARGET_USERS_CHANNELS.items():
+                channel = client.get_channel(channel_id)
+                print("Selected user:", user_name)
+                print("Channel:", channel)
 
-            if user not in last_tweet_ids:
-                user_id = get_twitter_user_id_cached(user)
-                last_tweet_ids[user] = None
-            else:
-                user_id = get_twitter_user_id_cached(user)
-            # print("Last tweet ID:", last_tweet_ids)
-            # print("Selected user ID:", user_id)
-            last_id = last_tweet_ids[user]
-            if last_id is None:
-                tweets = twitter_client.get_users_tweets(user_id, max_results=10)
-                # print("Fetching tweets 'ID None':", tweets)
-            else:
-                tweets = twitter_client.get_users_tweets(user_id, max_results=10, since_id=last_id)
-                print("Fetching new tweets since last tweet ID:", last_id)
+                if user_name not in last_tweet_ids:
+                    last_tweet_ids[user_name] = None
 
-            # Checks for the latest discord messages and sends translated if no doubles
-            if tweets.data:
-                tweets_data = list(tweets.data)
-                last_tweet_ids[user] = tweets_data[0].id
-                
-                last_discord_msg = await anext(channel.history(limit=1), None)
-                last_discord_msg = last_discord_msg.content if last_discord_msg else " "
-                
-                for tweet in tweets_data[::-1]:
-                    tweet_url = f"https://twitter.com/{user}/status/{tweet.id}"
+                feed = feedparser.parse(rss_url)
+                entries = feed.entries[:10]  # take up to 10 latest
 
-                    if last_discord_msg.splitlines()[-1] != tweet_url:
-                        tweet_translated_text = await translate_text(tweet.text)
-                        tweet_translated_text = await unembed_links(tweet_translated_text)
-                        await channel.send(f"{tweet_translated_text}\n{tweet_url}")
-                    else:
-                        print("Tried to fetch new tweet, but none were found")
+                last_discord_msgs = [msg.content async for msg in channel.history(limit=10)]
+
+                for entry in reversed(entries):
+                    tweet_url = entry.link
+                    tweet_id = tweet_url.split('/')[-1]
+
+                    if any(tweet_url in msg for msg in last_discord_msgs):
+                        print("Duplicate tweet found, skipping...")
+                        continue
+
+                    print(entry)
+
+                    content = clean_rss_content(entry)
+                    translated = await translate_text(content)
+                    translated = await unembed_links(translated)
+
+                    await channel.send(f"{translated}\n{tweet_url}")
+
+                if entries:
+                    last_tweet_ids[user_name] = entries[0].link.split('/')[-1]
 
         except Exception as e:
-            print("Error fetching tweets:", e)
+            print("RSS Check Error:", e)
 
-        twitter_user_index = (twitter_user_index + 1) % len(twitter_target_users)
+        await asyncio.sleep(600)
 
-        await asyncio.sleep(1215) # Wait for 4h 48m before checking again (with an added 15s of buffering) <-- I need to increase it to few hours to maybe once a day... stupid twitter limit | 86400 (24h) get_sleep_time()
-
-# async def quick_test():
-#     channel = client.get_channel(DISCORD_TEST_CHANNEL_ID)
-#     last_message = await anext(channel.history(limit=1))
-#     await channel.send(last_message.content)
-
+# Translates the tweet to english
 async def translate_text(text):
     try:
         async with Translator() as translator:
@@ -142,8 +119,8 @@ async def translate_text(text):
 async def on_ready():
     print(f'We have logged in as {client.user}')
     asyncio.create_task(check_tweets())
-    # asyncio.create_task(quick_test())
 
+# Sends a funny message in response to a give trigger from a specific user
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -166,9 +143,25 @@ def find_pull(text):
             return True
     return False
 
-def get_sleep_time() -> int:
-    global sleep_time
-    sleep_time = 1215 if sleep_time == 85175 else 85175
-    return sleep_time
+# Cleans the output from HTML tags
+def clean_rss_content(entry):
+    if hasattr(entry, 'summary') and entry.summary:
+        raw_html = entry.summary
+        
+        match = re.search(r'<p[^>]*>(.*?)</p>', raw_html, re.DOTALL | re.IGNORECASE)
+        if match:
+            content = match.group(1)
+        else:
+            content = raw_html
+            
+        content = re.sub(r'<br\s*/?>', '\n', content, flags=re.IGNORECASE)
+        
+        content = re.sub(r'<[^>]+>', '', content)
+        
+        content = html.unescape(content)
+        
+        return content.strip()
+    
+    return html.unescape(entry.title or "")
 
 client.run(BOT_TOKEN)
