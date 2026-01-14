@@ -1,10 +1,9 @@
 from dotenv import load_dotenv
-from googletrans import Translator
-import feedparser
+import packages.twitter_feed as twitter_feed
+import aiohttp
 import discord
 import random
 import asyncio
-import html
 import os
 import re
 
@@ -17,24 +16,7 @@ DISCLOUD_KEY=os.getenv("DISCLOUD_KEY")
 COBRA_ID=int(os.getenv("COBRA_ID"))
 # KURO_ID=int(os.getenv("KURO_ID"))
 
-DISCORD_PRICONNE_TWITTER_CHANNEL_ID=int(os.getenv("DISCORD_PRICONNE_TWITTER_CHANNEL_ID"))
-DISCORD_UMAMUSUME_TWITTER_CHANNEL_ID=int(os.getenv("DISCORD_UMAMUSUME_TWITTER_CHANNEL_ID"))
-DISCORD_TEST_CHANNEL_ID=int(os.getenv("DISCORD_TEST_CHANNEL_ID"))
-
-# TWITTER_BEARER=os.getenv("TWITTER_BEARER")
-# TWITTER_API_KEY=os.getenv("TWITTER_API_KEY")
-# TWITTER_API_SECRET=os.getenv("TWITTER_API_SECRET")
-# TWITTER_ACCESS_TOKEN=os.getenv("TWITTER_ACCESS_TOKEN")
-# TWITTER_ACCESS_TOKEN_SECRET=os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
-
-PRICONNE_RSS = os.getenv("PRICONNE_RSS")
-UMAMUSUME_RSS = os.getenv("UMAMUSUME_RSS")
-
-TWITTER_TARGET_USERS_CHANNELS = {
-    "priconne_redive": (DISCORD_PRICONNE_TWITTER_CHANNEL_ID, PRICONNE_RSS),
-    "umamusume_eng": (DISCORD_UMAMUSUME_TWITTER_CHANNEL_ID, UMAMUSUME_RSS),
-    # "test_channel": (DISCORD_TEST_CHANNEL_ID, PRICONNE_RSS)
-}
+LLM_API_URL = os.getenv("LLM_API_URL")
 
 REPLIES_LIST = [
     "Cobra!",
@@ -60,66 +42,12 @@ intents.message_content = True
 
 client = discord.Client(intents=intents)
 
-last_tweet_ids = {}
-
-# This function checks for new tweets via RSS and sends them to the Discord channel.
-async def check_tweets():
-    await client.wait_until_ready()
-
-    while not client.is_closed():
-        try:
-            for user_name, (channel_id, rss_url) in TWITTER_TARGET_USERS_CHANNELS.items():
-                channel = client.get_channel(channel_id)
-                print("Selected user:", user_name)
-                print("Channel:", channel)
-
-                if user_name not in last_tweet_ids:
-                    last_tweet_ids[user_name] = None
-
-                feed = feedparser.parse(rss_url)
-                entries = feed.entries[:10]  # take up to 10 latest
-
-                last_discord_msgs = [msg.content async for msg in channel.history(limit=10)]
-
-                for entry in reversed(entries):
-                    tweet_url = entry.link
-                    tweet_id = tweet_url.split('/')[-1]
-
-                    if any(tweet_url in msg for msg in last_discord_msgs):
-                        print("Duplicate tweet found, skipping...")
-                        continue
-
-                    print(entry)
-
-                    content = clean_rss_content(entry)
-                    translated = await translate_text(content)
-                    translated = await unembed_links(translated)
-
-                    await channel.send(f"{translated}\n{tweet_url}")
-
-                if entries:
-                    last_tweet_ids[user_name] = entries[0].link.split('/')[-1]
-
-        except Exception as e:
-            print("RSS Check Error:", e)
-
-        await asyncio.sleep(600)
-
-# Translates the tweet to english
-async def translate_text(text):
-    try:
-        async with Translator() as translator:
-            result = await translator.translate(text, dest='en')
-            return result.text
-    except Exception as e:
-        print("Failed to translate given text:", e)
-        return ""
-
 @client.event
 async def on_ready():
     print(f'We have logged in as {client.user}')
-    asyncio.create_task(check_tweets())
+    asyncio.create_task(twitter_feed.check_tweets_tweepy(client))
 
+# TODO ON EVENT IF USER WRITES  "@" + APPLICATION_ID OR USES THE NAME KAT OR ANGYKAT, THEN SEND A REQUEST TO GENERATE A RESPONSE WITH THE LLM USING AN API
 # Sends a funny message in response to a give trigger from a specific user
 @client.event
 async def on_message(message):
@@ -129,10 +57,43 @@ async def on_message(message):
     if message.author.id == COBRA_ID and find_pull(message.content):
         await message.channel.send(random.choice(REPLIES_LIST))
 
-async def unembed_links(text):
-    if not re.search(r'https?://\S+', text):
-        return text
-    return re.sub(r'https?://\S+', lambda match: f"<{match.group()}>", text)
+    # Example message <Message id=1460424691641618515 channel=<TextChannel id=1395438988277321859 name='bot-testing' position=7 nsfw=False news=False category_id=1091723593915842700> type=<MessageType.default: 0> author=<Member id=263726038381494272 name='kurokatana94' global_name='Kuro' bot=False nick=None guild=<Guild id=1091723593446068336 name='Ashes of Astrum' shard_id=0 chunked=False member_count=27>> flags=<MessageFlags value=0>>
+    # Example message content <:kyaruSurprise:1293244808365871185> edited <@1394484064651710614>
+    if message.author.global_name == "Kuro" and message.channel.name == "bot-testing":
+        await send_llm_request(message)
+    elif client.user.mentioned_in(message) | any(word in message.content.lower() for word in ["kat", "angykat", "angy kat"]) | is_replied_to(message):
+        await send_llm_request(message)
+
+async def send_llm_request(message):
+    print(message)
+    print(message.content)
+    async with aiohttp.ClientSession() as session:
+        payload = {
+            "user_input": message.content,
+            "username": message.author.global_name,
+        }
+        try:
+            async with session.post(LLM_API_URL, json=payload, timeout=60) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    await message.channel.send(data["response"])
+                else:
+                    print(f"Error: Received status code {resp.status}")
+                    await message.reply(random.choice(["zzz...zzz...", "D-don't bother me...", "Five more minutes... zzz..."]))
+        except Exception as e:
+            await message.reply(f"I don't feel so good... (Request Error: {e}).")
+
+def is_replied_to(message):
+    ref = message.reference
+    if not ref:
+        return False
+    
+    target = ref.cached_message or ref.resolved
+    
+    if target and hasattr(target, 'author'):
+        return target.author.id == client.user.id
+        
+    return False
 
 def find_pull(text):
     pattern = r'(.)\1+'
@@ -142,26 +103,5 @@ def find_pull(text):
         if re.sub(pattern, repl, word) in TRIGGER_WORDS:
             return True
     return False
-
-# Cleans the output from HTML tags
-def clean_rss_content(entry):
-    if hasattr(entry, 'summary') and entry.summary:
-        raw_html = entry.summary
-        
-        match = re.search(r'<p[^>]*>(.*?)</p>', raw_html, re.DOTALL | re.IGNORECASE)
-        if match:
-            content = match.group(1)
-        else:
-            content = raw_html
-            
-        content = re.sub(r'<br\s*/?>', '\n', content, flags=re.IGNORECASE)
-        
-        content = re.sub(r'<[^>]+>', '', content)
-        
-        content = html.unescape(content)
-        
-        return content.strip()
-    
-    return html.unescape(entry.title or "")
 
 client.run(BOT_TOKEN)
