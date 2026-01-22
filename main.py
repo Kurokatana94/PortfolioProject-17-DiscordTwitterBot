@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 import packages.twitter_feed as twitter_feed
+from packages.response_formatter import format_response
 import aiohttp
 import discord
 import random
@@ -54,12 +55,11 @@ async def on_message(message):
     if message.author == client.user:
         return
 
-    if message.author.id == COBRA_ID and find_pull(message.content):
-        await message.channel.send(random.choice(REPLIES_LIST))
-
     # Example message <Message id=1460424691641618515 channel=<TextChannel id=1395438988277321859 name='bot-testing' position=7 nsfw=False news=False category_id=1091723593915842700> type=<MessageType.default: 0> author=<Member id=263726038381494272 name='kurokatana94' global_name='Kuro' bot=False nick=None guild=<Guild id=1091723593446068336 name='Ashes of Astrum' shard_id=0 chunked=False member_count=27>> flags=<MessageFlags value=0>>
     # Example message content <:kyaruSurprise:1293244808365871185> edited <@1394484064651710614>
     if message.author.global_name == "Kuro" and message.channel.name == "bot-testing":
+        await send_llm_request(message)
+    elif message.author.id == COBRA_ID and find_pull(message.content):
         await send_llm_request(message)
     elif client.user.mentioned_in(message) | any(word in message.content.lower() for word in ["kat", "angykat", "angy kat"]) | is_replied_to(message):
         await send_llm_request(message)
@@ -68,20 +68,27 @@ async def send_llm_request(message):
     print(message)
     print(message.content)
     async with aiohttp.ClientSession() as session:
+        username = message.author.nick if message.author.nick != None else message.author.global_name
         payload = {
-            "user_input": message.content,
-            "username": message.author.global_name,
+            "user_input": message.clean_content,
+            "username": username,
         }
         try:
             async with session.post(LLM_API_URL, json=payload, timeout=60) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    await message.channel.send(data["response"])
+                    await message.channel.send(format_response(data["response"]))
                 else:
                     print(f"Error: Received status code {resp.status}")
-                    await message.reply(random.choice(["zzz...zzz...", "D-don't bother me...", "Five more minutes... zzz..."]))
+                    
+                    if message.author.id == COBRA_ID and find_pull(message.content):
+                        await message.channel.send(random.choice(REPLIES_LIST))
+                    else:
+                        await message.reply(random.choice(["zzz...zzz...", "D-don't bother me...", "Five more minutes... zzz..."]))
+                    
         except Exception as e:
-            await message.reply(f"I don't feel so good... (Request Error: {e}).")
+            print("Request error:", e)
+            await message.reply(f"I don't feel so good... Tell Kuro my tummy hurts!")
 
 def is_replied_to(message):
     ref = message.reference

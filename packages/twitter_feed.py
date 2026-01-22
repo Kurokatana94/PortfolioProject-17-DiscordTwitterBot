@@ -57,7 +57,7 @@ async def check_tweets_tweepy(client: discord.Client):
     while not client.is_closed():
         try:
             user = twitter_target_users[twitter_user_index]
-            channel = client.get_channel(TWITTER_TARGET_USERS_CHANNELS[user])
+            channel = client.get_channel(TWITTER_TARGET_USERS_CHANNELS[user][0])
             print("Selected user:", user)
             print("Channel:", channel)
 
