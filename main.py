@@ -32,11 +32,25 @@ REPLIES_LIST = [
     "https://tenor.com/bXz4I.gif"
 ]
 
-TRIGGER_WORDS = [
+COBRA_TRIGGER_WORDS = [
     "pul",
     "puls",
     "pulz",
 ]
+
+GENERAL_TRIGGER_WORDS = [
+    "kat ",
+    " kat",
+    " kat ",
+    " angykat",
+    "angykat ",
+    " angykat ",
+    " angy",
+    "angy ",
+    " angy ",
+    ]
+
+TRIGGER_RE = re.compile(r'(?<![\/\.])\b(kat|angykat|angy)\b', re.IGNORECASE)
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -61,8 +75,10 @@ async def on_message(message):
         await send_llm_request(message)
     elif message.author.id == COBRA_ID and find_pull(message.content):
         await send_llm_request(message)
-    elif client.user.mentioned_in(message) | any(word in message.content.lower() for word in ["kat", "angykat", "angy kat"]) | is_replied_to(message):
+    elif client.user.mentioned_in(message) | is_replied_to(message):
         await send_llm_request(message)
+    elif TRIGGER_RE.search(message.content):
+        await send_llm_request(message) if random.random() < 0.8 else None
 
 async def send_llm_request(message):
     print(message)
@@ -107,7 +123,7 @@ def find_pull(text):
     repl = r'\1'
     text = re.sub(r"[^A-Za-z ]", "", text.lower()).split()
     for word in text:
-        if re.sub(pattern, repl, word) in TRIGGER_WORDS:
+        if re.sub(pattern, repl, word) in COBRA_TRIGGER_WORDS:
             return True
     return False
 

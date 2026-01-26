@@ -34,7 +34,7 @@ emotes_dict = {
     ":priconneJewel:": "<:priconneJewel:1293244797657808896>",
     ":puddingGhost:": "<:puddingGhost:1293244784630304898>",
     ":tsumugiPog:": "<:tsumugiPog:1293245607028457624>",
-    ":wakanaShoo~1:": "<:wakanaShoo~1:1449471149695176897>",
+    # ":wakanaShoo~1:": "<:wakanaShoo~1:1449471149695176897>",
     ":yukiPotato:": "<:yukiPotato:1293244788627210290>",
 }
 
