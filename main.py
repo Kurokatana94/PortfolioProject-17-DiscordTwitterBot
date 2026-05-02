@@ -71,7 +71,7 @@ async def on_message(message):
 
     # Example message <Message id=1460424691641618515 channel=<TextChannel id=1395438988277321859 name='bot-testing' position=7 nsfw=False news=False category_id=1091723593915842700> type=<MessageType.default: 0> author=<Member id=263726038381494272 name='kurokatana94' global_name='Kuro' bot=False nick=None guild=<Guild id=1091723593446068336 name='Ashes of Astrum' shard_id=0 chunked=False member_count=27>> flags=<MessageFlags value=0>>
     # Example message content <:kyaruSurprise:1293244808365871185> edited <@1394484064651710614>
-    if message.author.global_name == "Kuro" and message.channel.name == "bot-testing":
+    if message.author.global_name in ["Kuro", "Hori"] and message.channel.name == "bot-testing":
         await send_llm_request(message)
     elif message.author.id == COBRA_ID and find_pull(message.content):
         await send_llm_request(message)
