@@ -38,6 +38,12 @@ emotes_dict = {
     ":yukiPotato:": "<:yukiPotato:1293244788627210290>",
 }
 
+reverse_emotes_dict = {v: k for k, v in emotes_dict.items()}
+
 def format_response(raw_response: str):
     pattern = '|'.join(re.escape(key) for key in emotes_dict.keys())
     return re.sub(pattern, lambda m: emotes_dict[m.group()], raw_response)
+
+def format_user_input(user_input:str):
+    pattern = '|'.join(re.escape(key) for key in reverse_emotes_dict.keys())
+    return re.sub(pattern, lambda m: reverse_emotes_dict[m.group()], user_input)
