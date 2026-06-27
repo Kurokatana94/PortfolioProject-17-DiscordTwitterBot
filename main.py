@@ -77,7 +77,7 @@ async def on_message(message):
         await send_llm_request(message, context)
     elif message.author.id == COBRA_ID and find_pull(message.content):
         await send_llm_request(message, context)
-    elif client.user.mentioned_in(message) | is_replied_to(message) | TRIGGER_RE.search(message.content):
+    elif client.user.mentioned_in(message) or bool(is_replied_to(message)) or bool(TRIGGER_RE.search(message.content)):
         await send_llm_request(message, context)
     # elif TRIGGER_RE.search(message.content):
     #     await send_llm_request(message) if random.random() < 0.8 else None
